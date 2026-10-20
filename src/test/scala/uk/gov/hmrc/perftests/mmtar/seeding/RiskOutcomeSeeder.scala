@@ -77,7 +77,7 @@ object RiskOutcomeSeeder {
                                     individuals: Seq[Obj]
                                   )
 
-  private val scenarios: Seq[ScenarioDefinition] = Seq(
+  val scenarios: Seq[ScenarioDefinition] = Seq(
     ScenarioDefinition("APP-ST-FIX-RESUB", "applicant", "sole-trader", "sole-trader-declaration", 1, "main", "failed-fixable-resubmission", individualFailuresByIndex = Map(0 -> Seq("Check_4_1", "Check_10_1")), weight = 8),
     ScenarioDefinition("APP-LTD-FIX-RESUB-2", "applicant", "limited-company", "limited-company-declaration", 2, "main", "failed-fixable-resubmission", entityFailures = Seq("Check_4_1"), weight = 6),
     ScenarioDefinition("APP-LLP-FIX-RESUB-2", "applicant", "llp", "llp-declaration", 2, "main", "failed-fixable-resubmission", entityFailures = Seq("Check_4_1"), weight = 6),
@@ -589,6 +589,12 @@ object RiskOutcomeSeeder {
 
     def runRisking(): Unit = requireSuccess(http.get(s"$frontend/agent-registration/test-only/risking/run"), "Run risking")
     def runResultsProcessing(): Unit = requireSuccess(http.get(s"$frontend/agent-registration/test-only/risking/run-results-file-processing"), "Run risking results processing")
+
+    def combineAllUnprocessedResultsFiles(): Unit =
+      requireRedirect(
+        http.postEmpty(s"$frontend/agent-registration/test-only/risking/risking-results-files/combine-all-unprocessed"),
+        "Combine all unprocessed risking results files"
+      )
 
     private def submitEntityFailures(applicationReference: String, failures: Seq[String], fileName: String): Unit = {
       val url = s"$frontend/agent-registration/test-only/risking/select-entity-failures/${urlEncode(applicationReference)}?fileName=${urlEncode(fileName)}"

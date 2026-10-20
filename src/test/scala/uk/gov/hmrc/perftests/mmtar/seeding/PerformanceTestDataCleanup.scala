@@ -27,7 +27,9 @@ object PerformanceTestDataCleanup {
                            provideDetailsManifest: String =
                            "tmp/performance-test-cleanup/provide-details.json",
                            riskOutcomesManifest: String =
-                           "tmp/performance-test-cleanup/risk-outcomes.json"
+                           "tmp/performance-test-cleanup/risk-outcomes.json",
+                           riskingResultsFileManifest: String =
+                           "tmp/performance-test-cleanup/risking-results-file.json"
                          )
 
   def main(args: Array[String]): Unit = {
@@ -51,28 +53,42 @@ object PerformanceTestDataCleanup {
           parsed,
           "risk-outcomes-manifest",
           "tmp/performance-test-cleanup/risk-outcomes.json"
+        ),
+      riskingResultsFileManifest =
+        option(
+          parsed,
+          "risking-results-file-manifest",
+          "tmp/performance-test-cleanup/risking-results-file.json"
         )
     )
 
+    // Limits cleanup to the risking results file manifest so other simulations' data is left alone.
+    val onlyRiskingResultsFile = parsed.get("only-risking-results-file").contains("true")
+
     val provideDetailsIds =
-      readCleanupManifest(
-        config.provideDetailsManifest
-      )
+      if (onlyRiskingResultsFile) Seq.empty[String]
+      else readCleanupManifest(config.provideDetailsManifest)
 
     val riskOutcomeIds =
+      if (onlyRiskingResultsFile) Seq.empty[String]
+      else readCleanupManifest(config.riskOutcomesManifest)
+
+    val riskingResultsFileIds =
       readCleanupManifest(
-        config.riskOutcomesManifest
+        config.riskingResultsFileManifest
       )
 
     val applicationIds =
       (
         provideDetailsIds ++
-          riskOutcomeIds
+          riskOutcomeIds ++
+          riskingResultsFileIds
         ).distinct
 
     println("\nPerformance test cleanup")
     println(s"  Provide-details applications : ${provideDetailsIds.size}")
     println(s"  Risk-outcome applications    : ${riskOutcomeIds.size}")
+    println(s"  Results-file applications    : ${riskingResultsFileIds.size}")
     println(s"  Total unique applications    : ${applicationIds.size}")
 
     if (applicationIds.isEmpty) {
@@ -111,12 +127,13 @@ object PerformanceTestDataCleanup {
       )
     }
 
-    deleteManifest(
-      config.provideDetailsManifest
-    )
+    if (!onlyRiskingResultsFile) {
+      deleteManifest(config.provideDetailsManifest)
+      deleteManifest(config.riskOutcomesManifest)
+    }
 
     deleteManifest(
-      config.riskOutcomesManifest
+      config.riskingResultsFileManifest
     )
 
     println(

@@ -7,6 +7,7 @@ The suite currently covers:
 * a full sole trader registration journey, run through `AgentRegistrationSimulation`
 * a targeted provide-details contention check, run through `AgentRegistrationProvideDetailsContentionSimulation`
 * deterministic applicant and individual risk-outcome journeys, run through `AgentRegistrationRiskOutcomeSimulation`
+* a one-shot large risking-results-file processing check, run through `AgentRegistrationRiskingResultsFileProcessingSimulation`
 
 The sole trader journey is the standard rate-based performance journey.
 
@@ -186,6 +187,49 @@ load
 ```
 
 Optional smoke feeders can also be generated.
+
+### AgentRegistrationRiskingResultsFileProcessingSimulation
+
+`AgentRegistrationRiskingResultsFileProcessingSimulation` measures how long the risking service takes to process one large results file containing outcomes for real applications held in Mongo.
+
+It is split into data setup and the timed test.
+
+**Data setup** (`prepareRiskingResultsFileData`, also run as part of `preparePerformanceTestData`)
+
+1. Creates 750 applications (default) using the same fast-forward flows as the risk-outcome seeder, with a weighted mix of outcomes (fixable entity failures, fixable individual failures, non-fixable failures and approvals) across sole trader, limited company, LLP and the partnership types.
+2. Uploads one risking results file per entity and individual, and calls `POST /agent-registration/test-only/risking/risking-results-files/combine-all-unprocessed` on the frontend after every batch of applications (10 by default, `RISKING_RESULTS_COMBINE_BATCH_SIZE`). Each call merges the previous combined file plus the new batch, so the end result is one big unprocessed file. Combining everything in a single call makes the frontend fetch ~1,700 files concurrently and times out against the risking service.
+3. Stops. Results file processing is deliberately not run here.
+
+**Test**
+
+1. Confirms there is an unprocessed results file.
+2. Runs results file processing (the step being measured).
+3. Confirms no unprocessed files remain.
+
+Each application has one entity record plus its linked individuals, so the seeder plans applications until the combined file holds up to `RISKING_RESULTS_RECORDS` records.
+
+Settings:
+
+```bash
+RISKING_RESULTS_RECORDS=750        # or -DriskingResults.records=750
+RISKING_RESULTS_SKIP_SEED=true     # skip data setup
+RISKING_RESULTS_DRY_RUN=true       # print the plan only, no API calls
+```
+
+Seeded applications are recorded in `tmp/performance-test-cleanup/risking-results-file.json` and removed by `cleanupPerformanceTestData`.
+
+Prepare the data only:
+
+```bash
+sbt -DrunLocal=true prepareRiskingResultsFileData
+```
+
+Run the timed test only (after data setup):
+
+```bash
+RISKING_RESULTS_SKIP_SEED=true sbt -DrunLocal=true \
+    "gatling:testOnly uk.gov.hmrc.perftests.mmtar.AgentRegistrationRiskingResultsFileProcessingSimulation"
+```
 
 ## Risk-outcome scenario matrix
 

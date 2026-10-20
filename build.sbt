@@ -18,6 +18,9 @@ lazy val prepareProvideDetailsConcurrencyData =
 lazy val prepareRiskOutcomeData =
   taskKey[Unit]("Seed deterministic risk-outcome data before Gatling")
 
+lazy val prepareRiskingResultsFileData =
+  taskKey[Unit]("Seed applications and combine their risking results into one large file (data prep for the results file processing test)")
+
 lazy val preparePerformanceTestData =
   taskKey[Unit]("Prepare all deterministic performance test data before Gatling")
 
@@ -194,6 +197,63 @@ prepareRiskOutcomeData := {
     .get
 }
 
+prepareRiskingResultsFileData := {
+  val log = streams.value.log
+  val jvmOptions = javaOptions.value
+  val runLocal = systemProperty("runLocal", jvmOptions).forall(_ == "true")
+
+  val skip =
+    sys.env.get("RISKING_RESULTS_SKIP_SEED").exists(_.equalsIgnoreCase("true"))
+
+  val testRunner = (Test / runner).value
+  val testClasspath = (Test / fullClasspath).value.files
+  if (skip) {
+    log.info("Skipping risking results file data preparation (RISKING_RESULTS_SKIP_SEED=true)")
+  } else {
+    val backendUrl =
+      if (runLocal) "http://localhost:22202"
+      else sys.env.getOrElse("BACKEND_URL", "https://agent-registration.protected.mdtp")
+
+    val frontendUrl =
+      if (runLocal) "http://localhost:22201"
+      else sys.env.getOrElse("FRONTEND_URL", "https://www.staging.tax.service.gov.uk")
+
+    val stubsUrl =
+      if (runLocal) "http://localhost:9099"
+      else sys.env.getOrElse("STUBS_URL", "https://www.staging.tax.service.gov.uk")
+
+    val records =
+      sys.env
+        .get("RISKING_RESULTS_RECORDS")
+        .orElse(systemProperty("riskingResults.records", jvmOptions))
+        .getOrElse("750")
+
+    resetIfRequested(frontendUrl, baseDirectory.value, log)
+
+    val args = Seq(
+      "--backend-url", backendUrl,
+      "--frontend-url", frontendUrl,
+      "--stubs-url", stubsUrl,
+      "--records", records,
+      "--combine-batch-size", sys.env.getOrElse("RISKING_RESULTS_COMBINE_BATCH_SIZE", "10")
+    ) ++ (
+      if (sys.env.getOrElse("RISKING_RESULTS_DRY_RUN", "false").equalsIgnoreCase("true")) Seq("--dry-run")
+      else Seq.empty
+    )
+
+    log.info(s"Preparing risking results file data in Scala. runLocal=$runLocal, records=$records")
+
+    testRunner
+      .run(
+        "uk.gov.hmrc.perftests.mmtar.seeding.RiskingResultsFileSeeder",
+        testClasspath,
+        args,
+        log
+      )
+      .get
+  }
+}
+
 refreshGeneratedTestResources := {
   val log = streams.value.log
   val sourceData = (Test / resourceDirectory).value / "data"
@@ -212,6 +272,7 @@ refreshGeneratedTestResources := {
 preparePerformanceTestData := Def.sequential(
   prepareProvideDetailsConcurrencyData,
   prepareRiskOutcomeData,
+  prepareRiskingResultsFileData,
   refreshGeneratedTestResources
 ).value
 
